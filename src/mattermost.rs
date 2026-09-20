@@ -8,10 +8,9 @@ use crate::core::{Message, Portrait, Room, RoomKind, Sidebar, Team, User};
 use crate::emoji::expand_shortcodes;
 use crate::net::{Method, Request, Response, Transport};
 
-const SITE: &str = "https://mm.example.test";
-
 #[derive(Clone, Debug)]
 pub struct Account {
+    pub site_url: String,
     pub token: String,
     pub me: User,
     pub team: Team,
@@ -86,8 +85,28 @@ struct PostList {
     posts: serde_json::Map<String, serde_json::Value>,
 }
 
+/// Trim, require https, strip a trailing slash. Bare hostnames get `https://`.
+pub fn normalize_site(input: &str) -> Result<String> {
+    let trimmed = input.trim().trim_end_matches('/');
+    anyhow::ensure!(!trimmed.is_empty(), "enter your Mattermost Site URL");
+    anyhow::ensure!(
+        !trimmed.contains('@') && !trimmed.contains('#'),
+        "Site URL must not include credentials or a fragment"
+    );
+    let url = if let Some(rest) = trimmed.strip_prefix("https://") {
+        anyhow::ensure!(!rest.is_empty(), "enter a hostname after https://");
+        format!("https://{rest}")
+    } else if trimmed.starts_with("http://") {
+        anyhow::bail!("HTTPS is required (http:// is not used for login)");
+    } else {
+        format!("https://{trimmed}")
+    };
+    Ok(url)
+}
+
 fn send(
     transport: &dyn Transport,
+    site: &str,
     method: Method,
     path: &str,
     token: Option<&str>,
@@ -99,7 +118,7 @@ fn send(
     }
     let response = transport.send(&Request {
         method,
-        url: format!("{SITE}{path}"),
+        url: format!("{site}{path}"),
         headers,
         body,
     })?;
@@ -113,21 +132,11 @@ fn send(
     Ok(response)
 }
 
-/// Password login. Token comes from the `Token` response header (Mattermost).
-pub fn login(transport: &dyn Transport, login_id: &str, password: &str) -> Result<Account> {
-    let body = serde_json::to_vec(&serde_json::json!({
-        "login_id": login_id,
-        "password": password,
-    }))?;
-    let response = send(transport, Method::Post, "/api/v4/users/login", None, body)?;
-    let token = response
-        .header("Token")
-        .context("login response missing Token header")?
-        .to_string();
-    let me: ApiUser = response.json()?;
-    Ok(Account {
+fn empty_account(site: &str, token: String, me: User) -> Account {
+    Account {
+        site_url: site.to_string(),
         token,
-        me: me.into_user(),
+        me,
         team: Team {
             id: String::new(),
             name: String::new(),
@@ -135,12 +144,71 @@ pub fn login(transport: &dyn Transport, login_id: &str, password: &str) -> Resul
         },
         sidebar: Sidebar::default(),
         users: Vec::new(),
-    })
+    }
+}
+
+/// Password login. Token comes from the `Token` response header (Mattermost).
+pub fn login(
+    transport: &dyn Transport,
+    site: &str,
+    login_id: &str,
+    password: &str,
+    totp: Option<&str>,
+) -> Result<Account> {
+    let mut payload = serde_json::json!({
+        "login_id": login_id,
+        "password": password,
+    });
+    if let Some(totp) = totp.filter(|t| !t.is_empty()) {
+        payload["token"] = serde_json::Value::String(totp.to_string());
+    }
+    let body = serde_json::to_vec(&payload)?;
+    let response = transport.send(&Request {
+        method: Method::Post,
+        url: format!("{site}/api/v4/users/login"),
+        headers: vec![("Content-Type".into(), "application/json".into())],
+        body,
+    })?;
+    if response.status == 401 {
+        let id = serde_json::from_slice::<serde_json::Value>(&response.body)
+            .ok()
+            .and_then(|v| v.get("id").and_then(|id| id.as_str()).map(str::to_string))
+            .unwrap_or_default();
+        if id.contains("mfa") {
+            anyhow::bail!("mfa_required");
+        }
+        anyhow::bail!("login failed (HTTP 401). Check username/email and password.");
+    }
+    if response.status >= 400 {
+        anyhow::bail!("login returned HTTP {}", response.status);
+    }
+    let token = response
+        .header("Token")
+        .context("login response missing Token header")?
+        .to_string();
+    let me: ApiUser = response.json()?;
+    Ok(empty_account(site, token, me.into_user()))
+}
+
+/// Personal Access Token: skip the password POST, treat the token as Bearer.
+pub fn login_with_token(transport: &dyn Transport, site: &str, token: &str) -> Result<Account> {
+    let me: ApiUser = send(
+        transport,
+        site,
+        Method::Get,
+        "/api/v4/users/me",
+        Some(token),
+        Vec::new(),
+    )?
+    .json()?;
+    Ok(empty_account(site, token.to_string(), me.into_user()))
 }
 
 pub fn bootstrap(transport: &dyn Transport, account: &mut Account) -> Result<()> {
+    let site = account.site_url.clone();
     let me: ApiUser = send(
         transport,
+        &site,
         Method::Get,
         "/api/v4/users/me",
         Some(&account.token),
@@ -151,6 +219,7 @@ pub fn bootstrap(transport: &dyn Transport, account: &mut Account) -> Result<()>
 
     let teams: Vec<ApiTeam> = send(
         transport,
+        &site,
         Method::Get,
         "/api/v4/users/me/teams",
         Some(&account.token),
@@ -166,6 +235,7 @@ pub fn bootstrap(transport: &dyn Transport, account: &mut Account) -> Result<()>
 
     let channels: Vec<ApiChannel> = send(
         transport,
+        &site,
         Method::Get,
         &format!("/api/v4/users/me/teams/{}/channels", account.team.id),
         Some(&account.token),
@@ -175,6 +245,7 @@ pub fn bootstrap(transport: &dyn Transport, account: &mut Account) -> Result<()>
 
     let categories: CategoryList = send(
         transport,
+        &site,
         Method::Get,
         &format!(
             "/api/v4/users/{}/teams/{}/channels/categories",
@@ -192,10 +263,10 @@ pub fn bootstrap(transport: &dyn Transport, account: &mut Account) -> Result<()>
         }
     }
 
-    let mut users = fetch_users(transport, &account.token, &user_ids_from(&channels))?;
+    let mut users = fetch_users(transport, &site, &account.token, &user_ids_from(&channels))?;
     for user in &mut users {
         if user.avatar.is_none()
-            && let Ok(bytes) = fetch_avatar(transport, &account.token, &user.id)
+            && let Ok(bytes) = fetch_avatar(transport, &site, &account.token, &user.id)
         {
             user.avatar = Some(bytes);
         }
@@ -251,16 +322,19 @@ fn dm_display(name: &str, me: &str, users: &[User]) -> String {
         .unwrap_or_else(|| other.to_string())
 }
 
-fn fetch_users(transport: &dyn Transport, token: &str, extra_ids: &[String]) -> Result<Vec<User>> {
-    let mut ids = extra_ids.to_vec();
-    for known in ["user-me", "user-alice", "user-bob"] {
-        if !ids.iter().any(|id| id == known) {
-            ids.push(known.to_string());
-        }
+fn fetch_users(
+    transport: &dyn Transport,
+    site: &str,
+    token: &str,
+    extra_ids: &[String],
+) -> Result<Vec<User>> {
+    if extra_ids.is_empty() {
+        return Ok(Vec::new());
     }
-    let body = serde_json::to_vec(&ids)?;
+    let body = serde_json::to_vec(&extra_ids)?;
     let parsed: Vec<ApiUser> = send(
         transport,
+        site,
         Method::Post,
         "/api/v4/users/ids",
         Some(token),
@@ -270,9 +344,15 @@ fn fetch_users(transport: &dyn Transport, token: &str, extra_ids: &[String]) -> 
     Ok(parsed.into_iter().map(ApiUser::into_user).collect())
 }
 
-fn fetch_avatar(transport: &dyn Transport, token: &str, user_id: &str) -> Result<Vec<u8>> {
+fn fetch_avatar(
+    transport: &dyn Transport,
+    site: &str,
+    token: &str,
+    user_id: &str,
+) -> Result<Vec<u8>> {
     let response = send(
         transport,
+        site,
         Method::Get,
         &format!("/api/v4/users/{user_id}/image"),
         Some(token),
@@ -283,12 +363,14 @@ fn fetch_avatar(transport: &dyn Transport, token: &str, user_id: &str) -> Result
 
 pub fn fetch_posts(
     transport: &dyn Transport,
+    site: &str,
     token: &str,
     channel_id: &str,
     users: &mut Vec<User>,
 ) -> Result<Vec<Message>> {
     let list: PostList = send(
         transport,
+        site,
         Method::Get,
         &format!("/api/v4/channels/{channel_id}/posts"),
         Some(token),
@@ -312,7 +394,7 @@ pub fn fetch_posts(
             .to_string();
         let create_at = value.get("create_at").and_then(|v| v.as_i64()).unwrap_or(0);
         if !users.iter().any(|user| user.id == user_id) {
-            let fetched = fetch_users(transport, token, std::slice::from_ref(&user_id))?;
+            let fetched = fetch_users(transport, site, token, std::slice::from_ref(&user_id))?;
             for user in fetched {
                 if !users.iter().any(|existing| existing.id == user.id) {
                     users.push(user);
@@ -334,7 +416,7 @@ pub fn fetch_posts(
                 user_id: author.id.clone(),
                 bytes: bytes.clone(),
             }),
-            None => match fetch_avatar(transport, token, &author.id) {
+            None => match fetch_avatar(transport, site, token, &author.id) {
                 Ok(bytes) => {
                     if let Some(user) = users.iter_mut().find(|user| user.id == author.id) {
                         user.avatar = Some(bytes.clone());
@@ -365,6 +447,7 @@ pub fn fetch_posts(
 pub fn page_messages(
     transport: &dyn Transport,
     cache: &Cache,
+    site: &str,
     token: &str,
     users: &mut Vec<User>,
     channel_id: &str,
@@ -378,7 +461,7 @@ pub fn page_messages(
             loaded_on,
         });
     }
-    let messages = fetch_posts(transport, token, channel_id, users)?;
+    let messages = fetch_posts(transport, site, token, channel_id, users)?;
     for user in users.iter() {
         cache.upsert_user(user)?;
     }

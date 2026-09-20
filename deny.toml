@@ -14,7 +14,21 @@ all-features = true
 version = 2
 yanked = "deny"
 # Every ignore is an accepted risk with a stated reason and an exit route.
-ignore = []
+ignore = [
+    # ttf-parser is unmaintained, not vulnerable. It arrives through winit's
+    # Wayland client-side decorations, not the chat or TLS path, and leaves
+    # when the GUI stack moves to a maintained font parser.
+    { id = "RUSTSEC-2026-0192", reason = "unmaintained font parser behind winit CSD; not in TLS or Mattermost path" },
+    # rustls 0.23.44 accepts TLS 1.3 handshake messages across key-change
+    # record boundaries. The handshake transcript is still authenticated.
+    # Drop when the FileMan rustls pin moves to >= 0.23.45.
+    { id = "RUSTSEC-2026-0285", reason = "pinned rustls 0.23.44 with FileMan rustls-rustcrypto provider" },
+    # paste is an unmaintained compile-time proc macro pulled by rustls-rustcrypto.
+    { id = "RUSTSEC-2024-0436", reason = "compile-time paste in pinned rustls-rustcrypto; not linked as runtime data" },
+    # Marvin RSA timing. rustls-rustcrypto pulls rsa; ComPort refuses client certs
+    # (NoPrivateKeys) and does not implement RSA key exchange (TLS 1.3 only).
+    { id = "RUSTSEC-2023-0071", reason = "rsa via rustls-rustcrypto; TLS 1.3 only, no client certs" },
+]
 
 [bans]
 multiple-versions = "allow"
@@ -58,7 +72,6 @@ allow = [
     "OFL-1.1",
     "0BSD",
     "Ubuntu-font-1.0",
-    "blessing",
 ]
 confidence-threshold = 0.9
 

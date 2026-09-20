@@ -36,7 +36,8 @@ impl Desktop {
         }
     }
 
-    pub fn show(&mut self, ui: &mut Ui) {
+    pub fn show(&mut self, ui: &mut Ui) -> Option<String> {
+        let mut clicked = None;
         egui::Panel::left("rooms")
             .exact_size(280.0)
             .resizable(false)
@@ -46,7 +47,9 @@ impl Desktop {
                     .fill(SIDEBAR_BG)
                     .inner_margin(egui::Margin::symmetric(12, 16)),
             )
-            .show_inside(ui, |ui| self.sidebar(ui));
+            .show_inside(ui, |ui| {
+                clicked = self.sidebar(ui);
+            });
         egui::Panel::bottom("compose")
             .resizable(false)
             .exact_size(56.0)
@@ -63,9 +66,11 @@ impl Desktop {
                         self.messages(ui);
                     });
             });
+        clicked
     }
 
-    fn sidebar(&self, ui: &mut Ui) {
+    fn sidebar(&self, ui: &mut Ui) -> Option<String> {
+        let mut clicked = None;
         ui.label(
             RichText::new(&self.account.team.display_name)
                 .color(SIDEBAR_TEXT)
@@ -89,10 +94,17 @@ impl Desktop {
                     label = format!("🔒 {label}");
                 }
                 let color = if selected { GOLD } else { SIDEBAR_TEXT };
-                ui.label(RichText::new(label).color(color).size(14.0));
+                let response = ui.add(
+                    egui::Label::new(RichText::new(label).color(color).size(14.0))
+                        .sense(Sense::click()),
+                );
+                if response.clicked() {
+                    clicked = Some(room.id.clone());
+                }
             }
             ui.add_space(8.0);
         }
+        clicked
     }
 
     fn header(&self, ui: &mut Ui) {
@@ -209,4 +221,124 @@ fn decode_png(bytes: &[u8]) -> Option<ColorImage> {
 /// Layout smoke for tests that cannot open a GPU surface.
 pub fn sidebar_has_left_list(sidebar: &Sidebar) -> bool {
     !sidebar.grouped().is_empty()
+}
+
+pub struct LoginForm {
+    pub site: String,
+    pub login_id: String,
+    pub password: String,
+    pub totp: String,
+    pub pat: String,
+    pub error: Option<String>,
+    pub busy: bool,
+    pub need_mfa: bool,
+}
+
+impl LoginForm {
+    pub fn new(site: String) -> Self {
+        Self {
+            site,
+            login_id: String::new(),
+            password: String::new(),
+            totp: String::new(),
+            pat: String::new(),
+            error: None,
+            busy: false,
+            need_mfa: false,
+        }
+    }
+
+    /// Returns true when the user asked to sign in.
+    pub fn show(&mut self, ui: &mut Ui) -> bool {
+        let mut submit = false;
+        egui::CentralPanel::default()
+            .frame(egui::Frame::NONE.fill(CENTER_BG))
+            .show_inside(ui, |ui| {
+                ui.vertical_centered(|ui| {
+                    ui.add_space(48.0);
+                    ui.label(RichText::new("ComPort").size(28.0).strong());
+                    ui.label(
+                        RichText::new("Sign in to your Mattermost server")
+                            .color(MUTED)
+                            .size(16.0),
+                    );
+                });
+                ui.add_space(24.0);
+                ui.horizontal(|ui| {
+                    let pad = ((ui.available_width() - 480.0) / 2.0).max(24.0);
+                    ui.add_space(pad);
+                    ui.vertical(|ui| {
+                        ui.set_max_width(480.0);
+                        ui.label("Site URL");
+                        ui.add(
+                            egui::TextEdit::singleline(&mut self.site)
+                                .desired_width(480.0)
+                                .hint_text("https://chat.company.com"),
+                        );
+                        ui.add_space(8.0);
+                        ui.label("Username or email");
+                        ui.add(
+                            egui::TextEdit::singleline(&mut self.login_id)
+                                .desired_width(480.0)
+                                .hint_text("you@company.com"),
+                        );
+                        ui.add_space(8.0);
+                        ui.label("Password");
+                        ui.add(
+                            egui::TextEdit::singleline(&mut self.password)
+                                .desired_width(480.0)
+                                .password(true),
+                        );
+                        if self.need_mfa {
+                            ui.add_space(8.0);
+                            ui.label("MFA code");
+                            ui.add(
+                                egui::TextEdit::singleline(&mut self.totp)
+                                    .desired_width(480.0)
+                                    .hint_text("6-digit code"),
+                            );
+                        }
+                        ui.add_space(12.0);
+                        ui.label(
+                            RichText::new("Or a Personal Access Token (SSO / no password)")
+                                .color(MUTED)
+                                .size(13.0),
+                        );
+                        ui.add(
+                            egui::TextEdit::singleline(&mut self.pat)
+                                .desired_width(480.0)
+                                .password(true)
+                                .hint_text("Profile → Security → Personal Access Tokens"),
+                        );
+                        ui.add_space(16.0);
+                        ui.horizontal(|ui| {
+                            let label = if self.busy {
+                                "Signing in…"
+                            } else {
+                                "Sign in"
+                            };
+                            if ui
+                                .add_enabled(!self.busy, egui::Button::new(label))
+                                .clicked()
+                            {
+                                submit = true;
+                            }
+                        });
+                        if let Some(error) = &self.error {
+                            ui.add_space(8.0);
+                            ui.colored_label(Color32::from_rgb(0xd5, 0x24, 0x4a), error);
+                        }
+                        ui.add_space(24.0);
+                        ui.label(
+                            RichText::new(
+                                "Use the same HTTPS URL you open in a browser. LDAP usernames work if the server accepts them as login_id. SAML/SSO is not in this build — create a Personal Access Token instead (an admin may need to enable User Access Tokens).",
+                            )
+                            .color(MUTED)
+                            .size(13.0),
+                        );
+                    });
+                });
+            });
+        submit
+    }
 }

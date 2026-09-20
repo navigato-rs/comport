@@ -17,7 +17,9 @@ fn second_room_open_is_cache_hit_on_worker_without_http() {
     let replay = Arc::new(comport::fixtures::recorded_replay());
     let cache = Cache::open_memory().expect("cache");
     let session = Session::spawn(replay.clone(), cache);
-    session.login("ada", "password").expect("login cmd");
+    session
+        .login("https://mm.example.test", "ada", "password")
+        .expect("login cmd");
     let account = session.wait_ready(Duration::from_secs(5)).expect("ready");
     assert_eq!(account.me.username, "ada");
 
@@ -71,12 +73,20 @@ fn second_room_open_is_cache_hit_on_worker_without_http() {
 fn cache_page_with_forbidden_transport() {
     let replay = Arc::new(comport::fixtures::recorded_replay());
     let cache = Cache::open_memory().expect("cache");
-    let mut account = mattermost::login(replay.as_ref(), "ada", "password").expect("login");
+    let mut account = mattermost::login(
+        replay.as_ref(),
+        "https://mm.example.test",
+        "ada",
+        "password",
+        None,
+    )
+    .expect("login");
     mattermost::bootstrap(replay.as_ref(), &mut account).expect("bootstrap");
     mattermost::persist_account(&cache, &account, &account.users).expect("persist");
     mattermost::page_messages(
         replay.as_ref() as &dyn Transport,
         &cache,
+        &account.site_url,
         &account.token,
         &mut account.users,
         "ch-town",
@@ -87,6 +97,7 @@ fn cache_page_with_forbidden_transport() {
     let page = mattermost::page_messages(
         &forbidden,
         &cache,
+        &account.site_url,
         &account.token,
         &mut account.users,
         "ch-town",

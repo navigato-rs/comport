@@ -14,7 +14,14 @@ use comport::ui::sidebar_has_left_list;
 fn fixture_login() -> (Arc<comport::net::Replay>, Cache, mattermost::Account) {
     let replay = Arc::new(recorded_replay());
     let cache = Cache::open_memory().expect("cache");
-    let mut account = mattermost::login(replay.as_ref(), "ada", "password").expect("login");
+    let mut account = mattermost::login(
+        replay.as_ref(),
+        "https://mm.example.test",
+        "ada",
+        "password",
+        None,
+    )
+    .expect("login");
     mattermost::bootstrap(replay.as_ref(), &mut account).expect("bootstrap");
     mattermost::persist_account(&cache, &account, &account.users).expect("persist");
     (replay, cache, account)
@@ -105,6 +112,7 @@ fn message_page_has_portrait_and_expanded_emoji() {
     let page = mattermost::page_messages(
         replay.as_ref() as &dyn Transport,
         &cache,
+        &account.site_url,
         &account.token,
         &mut account.users,
         "ch-town",
@@ -134,5 +142,39 @@ fn message_page_has_portrait_and_expanded_emoji() {
         portrait.bytes.starts_with(b"\x89PNG"),
         "portrait must be PNG bytes, got {} bytes",
         portrait.bytes.len()
+    );
+}
+
+#[test]
+fn normalize_site_requires_https() {
+    assert_eq!(
+        mattermost::normalize_site(" chat.company.com/ ").unwrap(),
+        "https://chat.company.com"
+    );
+    assert_eq!(
+        mattermost::normalize_site("https://mm.example.com/sub").unwrap(),
+        "https://mm.example.com/sub"
+    );
+    assert!(mattermost::normalize_site("http://mm.example.com").is_err());
+    assert!(mattermost::normalize_site("https://user:pass@host").is_err());
+}
+
+#[test]
+fn personal_access_token_skips_password_login() {
+    let replay = Arc::new(recorded_replay());
+    let mut account = mattermost::login_with_token(
+        replay.as_ref(),
+        "https://mm.example.test",
+        "fixture-session-token",
+    )
+    .expect("PAT login");
+    mattermost::bootstrap(replay.as_ref(), &mut account).expect("bootstrap");
+    assert_eq!(account.me.username, "ada");
+    let calls = replay.calls();
+    assert!(
+        !calls
+            .iter()
+            .any(|(method, path)| method == "POST" && path == "/api/v4/users/login"),
+        "PAT must not POST /users/login, got {calls:?}"
     );
 }

@@ -41,11 +41,19 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 rusqlite = { version = "0.32", features = ["bundled"] }
 png = "0.18"
-blade-egui = { git = "https://github.com/kvark/blade", rev = "f1fbf2a" }
-blade-graphics = { git = "https://github.com/kvark/blade", rev = "f1fbf2a" }
+blade-egui = { version = "0.8.1", git = "https://github.com/kvark/blade", rev = "f1fbf2a" }
+blade-graphics = { version = "0.8.4", git = "https://github.com/kvark/blade", rev = "f1fbf2a" }
 egui = "0.34"
 egui-winit = { version = "0.34", default-features = false, features = ["clipboard", "wayland", "x11"] }
 winit = "0.30.5"
+rustls = { version = "=0.23.44", default-features = false, features = ["std"] }
+rustls-rustcrypto = { version = "0.0.2-alpha", git = "https://github.com/RustCrypto/rustls-rustcrypto", rev = "70f76c039e587192688af18a80d5d6435dedaf22", default-features = false, features = ["std", "zeroize"] }
+ureq = { version = "=3.3.0", default-features = false, features = ["rustls-no-provider"] }
+rustls-native-certs = "0.8"
+getrandom = { version = "0.4", default-features = false, features = ["sys_rng"] }
+p256 = { version = "0.14", default-features = false, features = ["ecdh"] }
+x25519-dalek = { version = "3", default-features = false, features = ["static_secrets", "zeroize"] }
+zeroize = "1"
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(gles)'] }
