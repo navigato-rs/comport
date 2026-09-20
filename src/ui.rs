@@ -36,6 +36,10 @@ impl Desktop {
         }
     }
 
+    pub fn release_gpu_textures(&mut self) {
+        self.textures.clear();
+    }
+
     pub fn show(&mut self, ui: &mut Ui) -> Option<String> {
         let mut clicked = None;
         egui::Panel::left("rooms")

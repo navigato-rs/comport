@@ -7,5 +7,7 @@
   `comport --demo` and `--demo --snapshot PNG`.
 - Login form for a self-hosted Mattermost Site URL (password, MFA, or Personal
   Access Token) over HTTPS. README screenshot and onboarding notes.
+- Destroy Blade surface, encoder, and egui painter on window close (Starcom
+  Drop path). `comport --demo --exit-after-frames N` plus a GPU lifecycle test.
 - Repository scaffold: single crate, CI (Linux/macOS/Windows, MSRV, cargo-deny),
   desktop metadata, privacy policy, and the design document.

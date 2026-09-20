@@ -14,7 +14,8 @@ Usage: comport [--server URL]\n\
 With no flags, opens a login form for your Mattermost Site URL.\n\
 --server prefills that URL (https://chat.company.com).\n\
 --demo loads recorded fixtures (no live server).\n\
---snapshot writes an offscreen PNG of the demo and requires --demo.\n";
+--snapshot writes an offscreen PNG of the demo and requires --demo.\n\
+--exit-after-frames N paints N frames then exits (GPU lifecycle tests).\n";
 
 fn main() -> process::ExitCode {
     match run() {
@@ -31,6 +32,7 @@ fn run() -> anyhow::Result<()> {
     let mut demo = false;
     let mut snapshot = None;
     let mut server = None;
+    let mut exit_after_frames = None;
     while let Some(argument) = arguments.next() {
         match argument.to_str() {
             Some("--help" | "-h") => {
@@ -62,6 +64,21 @@ fn run() -> anyhow::Result<()> {
                     arguments.next().context("--snapshot needs a PNG path")?,
                 ));
             }
+            Some("--exit-after-frames") => {
+                anyhow::ensure!(
+                    exit_after_frames.is_none(),
+                    "--exit-after-frames supplied twice"
+                );
+                let raw = arguments
+                    .next()
+                    .context("--exit-after-frames needs a count")?;
+                let n: u32 = raw
+                    .to_str()
+                    .and_then(|s| s.parse().ok())
+                    .context("--exit-after-frames needs a positive integer")?;
+                anyhow::ensure!(n > 0, "--exit-after-frames must be at least 1");
+                exit_after_frames = Some(n);
+            }
             _ => anyhow::bail!("unrecognized argument {argument:?}; use --help"),
         }
     }
@@ -74,5 +91,9 @@ fn run() -> anyhow::Result<()> {
         anyhow::ensure!(demo, "--snapshot requires --demo");
         return comport::snapshot::save_demo(&path);
     }
-    comport::window::run(comport::window::Startup { demo, site: server })
+    comport::window::run(comport::window::Startup {
+        demo,
+        site: server,
+        exit_after_frames,
+    })
 }

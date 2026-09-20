@@ -22,11 +22,10 @@ enum UserEvent {
 pub struct Startup {
     pub demo: bool,
     pub site: Option<String>,
+    pub exit_after_frames: Option<u32>,
 }
 
 struct Runtime {
-    window: Window,
-    context: bg::Context,
     surface: bg::Surface,
     surface_info: bg::SurfaceInfo,
     encoder: bg::CommandEncoder,
@@ -35,6 +34,9 @@ struct Runtime {
     painter: be::GuiPainter,
     input: egui_winit::State,
     size: winit::dpi::PhysicalSize<u32>,
+    // Native window and GPU context must outlive surface teardown.
+    window: Window,
+    context: bg::Context,
 }
 
 impl Runtime {
@@ -91,8 +93,6 @@ impl Runtime {
             None,
         );
         Ok(Self {
-            window,
-            context,
             surface,
             surface_info,
             encoder,
@@ -101,7 +101,22 @@ impl Runtime {
             painter,
             input,
             size,
+            window,
+            context,
         })
+    }
+
+    fn finish_frame(&mut self) -> anyhow::Result<()> {
+        if let Some(ref sync) = self.last_sync {
+            self.context
+                .wait_for(sync, !0)
+                .map_err(|error| anyhow::anyhow!("GPU frame wait failed: {error:?}"))?;
+        }
+        if let Some(view) = self.pending_view.take() {
+            self.context.destroy_texture_view(view);
+        }
+        self.last_sync = None;
+        Ok(())
     }
 
     fn paint(&mut self, ctx: &egui::Context, output: egui::FullOutput) -> anyhow::Result<()> {
@@ -112,14 +127,7 @@ impl Runtime {
             physical_size: (self.size.width, self.size.height),
             scale_factor: output.pixels_per_point,
         };
-        if let Some(ref sync) = self.last_sync {
-            self.context
-                .wait_for(sync, !0)
-                .map_err(|error| anyhow::anyhow!("GPU frame wait failed: {error:?}"))?;
-        }
-        if let Some(view) = self.pending_view.take() {
-            self.context.destroy_texture_view(view);
-        }
+        self.finish_frame()?;
         self.encoder.start();
         self.painter
             .update_textures(&mut self.encoder, &output.textures_delta, &self.context);
@@ -156,6 +164,19 @@ impl Runtime {
     }
 }
 
+impl Drop for Runtime {
+    fn drop(&mut self) {
+        if let Err(error) = self.finish_frame() {
+            log::error!("{error}");
+        }
+        // Swapchain teardown waits for presentation. Keep the native window
+        // and event loop alive until this returns (Starcom Runtime::drop).
+        self.context.destroy_surface(&mut self.surface);
+        self.context.destroy_command_encoder(&mut self.encoder);
+        self.painter.destroy(&self.context);
+    }
+}
+
 enum Screen {
     Login(LoginForm),
     Chat(Box<Desktop>),
@@ -168,6 +189,8 @@ struct App {
     runtime: Option<Runtime>,
     error: Option<anyhow::Error>,
     proxy: winit::event_loop::EventLoopProxy<UserEvent>,
+    exit_after_frames: Option<u32>,
+    frames_painted: u32,
 }
 
 impl App {
@@ -261,6 +284,14 @@ impl App {
             }
         }
     }
+
+    fn shutdown(&mut self) {
+        if let Screen::Chat(desktop) = &mut self.screen {
+            desktop.release_gpu_textures();
+        }
+        // Drop GPU resources while the event loop and native window still exist.
+        self.runtime.take();
+    }
 }
 
 impl ApplicationHandler<UserEvent> for App {
@@ -290,7 +321,10 @@ impl ApplicationHandler<UserEvent> for App {
             return;
         }
         match event {
-            WindowEvent::CloseRequested => event_loop.exit(),
+            WindowEvent::CloseRequested => {
+                self.shutdown();
+                event_loop.exit();
+            }
             WindowEvent::RedrawRequested => {
                 self.drain_session();
                 let raw = {
@@ -336,6 +370,16 @@ impl ApplicationHandler<UserEvent> for App {
                 }
                 if let Err(error) = self.runtime.as_mut().unwrap().paint(&self.ctx, output) {
                     self.error = Some(error);
+                    self.shutdown();
+                    event_loop.exit();
+                    return;
+                }
+                self.frames_painted += 1;
+                if self
+                    .exit_after_frames
+                    .is_some_and(|n| self.frames_painted >= n)
+                {
+                    self.shutdown();
                     event_loop.exit();
                 }
             }
@@ -348,6 +392,10 @@ impl ApplicationHandler<UserEvent> for App {
         event_loop.set_control_flow(ControlFlow::Wait);
     }
 
+    fn exiting(&mut self, _event_loop: &ActiveEventLoop) {
+        self.shutdown();
+    }
+
     fn user_event(&mut self, _event_loop: &ActiveEventLoop, _event: UserEvent) {
         if let Some(runtime) = &self.runtime {
             runtime.window.request_redraw();
@@ -357,7 +405,7 @@ impl ApplicationHandler<UserEvent> for App {
 
 pub fn run(startup: Startup) -> anyhow::Result<()> {
     if startup.demo {
-        return run_demo();
+        return run_demo_inner(startup.exit_after_frames);
     }
     let saved = crate::settings::load();
     let site = startup.site.unwrap_or(saved.site_url);
@@ -371,8 +419,12 @@ pub fn run(startup: Startup) -> anyhow::Result<()> {
         runtime: None,
         error: None,
         proxy,
+        exit_after_frames: startup.exit_after_frames,
+        frames_painted: 0,
     };
-    event_loop.run_app(&mut app)?;
+    let result = event_loop.run_app(&mut app);
+    app.shutdown();
+    result?;
     if let Some(error) = app.error {
         return Err(error);
     }
@@ -380,6 +432,10 @@ pub fn run(startup: Startup) -> anyhow::Result<()> {
 }
 
 pub fn run_demo() -> anyhow::Result<()> {
+    run_demo_inner(None)
+}
+
+fn run_demo_inner(exit_after_frames: Option<u32>) -> anyhow::Result<()> {
     let (account, page) = crate::session::demo_state()?;
     let event_loop = EventLoop::<UserEvent>::with_user_event().build()?;
     let proxy = event_loop.create_proxy();
@@ -391,8 +447,12 @@ pub fn run_demo() -> anyhow::Result<()> {
         runtime: None,
         error: None,
         proxy,
+        exit_after_frames,
+        frames_painted: 0,
     };
-    event_loop.run_app(&mut app)?;
+    let result = event_loop.run_app(&mut app);
+    app.shutdown();
+    result?;
     if let Some(error) = app.error {
         return Err(error);
     }

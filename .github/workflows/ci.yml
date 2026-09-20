@@ -31,6 +31,11 @@ jobs:
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
+      - name: Linux software-rendering dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libegl1 libvulkan1 mesa-vulkan-drivers xvfb
       - name: Format check
         run: cargo fmt --check
       - name: Native crypto dependency policy
@@ -41,6 +46,8 @@ jobs:
         run: cargo build --locked --all-features --all-targets
       - name: Test
         run: cargo test --locked --all-features --all-targets
+        env:
+          VK_ICD_FILENAMES: ${{ runner.os == 'Linux' && '/usr/share/vulkan/icd.d/lvp_icd.json' || '' }}
       - name: Clippy
         run: cargo clippy --locked --all-features --all-targets -- -D warnings
 
