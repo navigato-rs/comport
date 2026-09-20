@@ -35,7 +35,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libegl1 libvulkan1 mesa-vulkan-drivers xvfb
+          sudo apt-get install -y libegl1 libvulkan1 mesa-vulkan-drivers xvfb libxkbcommon-x11-0 libxkbcommon0
       - name: Format check
         run: cargo fmt --check
       - name: Native crypto dependency policy
@@ -68,10 +68,16 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: msrv-${{ steps.msrv.outputs.version }}
+      - name: Linux software-rendering dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libegl1 libvulkan1 mesa-vulkan-drivers xvfb libxkbcommon-x11-0 libxkbcommon0
       - name: Build and test at the declared minimum
         run: |
           cargo build --locked --all-features --all-targets
           cargo test --locked --all-features --all-targets
+        env:
+          VK_ICD_FILENAMES: /usr/share/vulkan/icd.d/lvp_icd.json
 
   supply-chain:
     runs-on: ubuntu-latest

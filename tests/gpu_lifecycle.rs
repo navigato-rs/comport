@@ -55,6 +55,7 @@ fn demo_window_open_close_does_not_leak_gpu() {
         || combined.contains("Failed to initialize GPU")
         || combined.contains("WAYLAND_DISPLAY")
         || combined.contains("DISPLAY is set")
+        || combined.contains("libxkbcommon")
     {
         skip(&format!("no usable GPU/display:\n{combined}"));
         return;
