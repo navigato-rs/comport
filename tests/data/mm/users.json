@@ -1,0 +1,26 @@
+[
+  {
+    "id": "user-me",
+    "username": "ada",
+    "first_name": "Ada",
+    "last_name": "Lovelace",
+    "nickname": "",
+    "email": "ada@example.com"
+  },
+  {
+    "id": "user-alice",
+    "username": "alice",
+    "first_name": "Alice",
+    "last_name": "Hopper",
+    "nickname": "",
+    "email": "alice@example.com"
+  },
+  {
+    "id": "user-bob",
+    "username": "bob",
+    "first_name": "Bob",
+    "last_name": "Katz",
+    "nickname": "",
+    "email": "bob@example.com"
+  }
+]

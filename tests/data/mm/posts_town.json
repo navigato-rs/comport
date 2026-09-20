@@ -1,0 +1,35 @@
+{
+  "order": ["post-town-2", "post-town-1"],
+  "posts": {
+    "post-town-1": {
+      "id": "post-town-1",
+      "create_at": 1700000001000,
+      "update_at": 1700000001000,
+      "edit_at": 0,
+      "delete_at": 0,
+      "user_id": "user-alice",
+      "channel_id": "ch-town",
+      "root_id": "",
+      "original_id": "",
+      "message": "Hello team :smile:",
+      "type": "",
+      "hashtags": "",
+      "pending_post_id": ""
+    },
+    "post-town-2": {
+      "id": "post-town-2",
+      "create_at": 1700000004000,
+      "update_at": 1700000004000,
+      "edit_at": 0,
+      "delete_at": 0,
+      "user_id": "user-me",
+      "channel_id": "ch-town",
+      "root_id": "",
+      "original_id": "",
+      "message": "Welcome :wave:",
+      "type": "",
+      "hashtags": "",
+      "pending_post_id": ""
+    }
+  }
+}

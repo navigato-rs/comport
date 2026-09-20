@@ -1,0 +1,58 @@
+[
+  {
+    "id": "ch-town",
+    "create_at": 1700000000000,
+    "update_at": 1700000000000,
+    "delete_at": 0,
+    "team_id": "team-acme",
+    "type": "O",
+    "display_name": "Town Square",
+    "name": "town-square",
+    "header": "",
+    "purpose": "",
+    "last_post_at": 1700000004000,
+    "total_msg_count": 2
+  },
+  {
+    "id": "ch-offtopic",
+    "create_at": 1700000000000,
+    "update_at": 1700000000000,
+    "delete_at": 0,
+    "team_id": "team-acme",
+    "type": "O",
+    "display_name": "Off-Topic",
+    "name": "off-topic",
+    "header": "",
+    "purpose": "",
+    "last_post_at": 1700000002000,
+    "total_msg_count": 1
+  },
+  {
+    "id": "ch-secret",
+    "create_at": 1700000000000,
+    "update_at": 1700000000000,
+    "delete_at": 0,
+    "team_id": "team-acme",
+    "type": "P",
+    "display_name": "Secret",
+    "name": "secret",
+    "header": "",
+    "purpose": "",
+    "last_post_at": 1700000003000,
+    "total_msg_count": 1
+  },
+  {
+    "id": "ch-dm-bob",
+    "create_at": 1700000000000,
+    "update_at": 1700000000000,
+    "delete_at": 0,
+    "team_id": "",
+    "type": "D",
+    "display_name": "",
+    "name": "user-me__user-bob",
+    "header": "",
+    "purpose": "",
+    "last_post_at": 1700000005000,
+    "total_msg_count": 1
+  }
+]

@@ -1,7 +1,18 @@
-//! ComPort library surface. The desktop binary lives in `src/main.rs`.
+//! Native Mattermost client. The desktop binary lives in `src/main.rs`.
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const REVISION: Option<&str> = option_env!("GITHUB_SHA");
+
+pub mod cache;
+pub mod core;
+pub mod emoji;
+pub mod fixtures;
+pub mod mattermost;
+pub mod net;
+pub mod session;
+pub mod snapshot;
+pub mod ui;
+pub mod window;
 
 #[cfg(test)]
 mod tests {

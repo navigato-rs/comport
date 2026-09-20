@@ -37,6 +37,18 @@ assets = [
 anyhow = "1.0"
 log = "0.4"
 env_logger = "0.11"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+rusqlite = { version = "0.32", features = ["bundled"] }
+png = "0.18"
+blade-egui = { git = "https://github.com/kvark/blade", rev = "f1fbf2a" }
+blade-graphics = { git = "https://github.com/kvark/blade", rev = "f1fbf2a" }
+egui = "0.34"
+egui-winit = { version = "0.34", default-features = false, features = ["clipboard", "wayland", "x11"] }
+winit = "0.30.5"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(gles)'] }
 
 [profile.release]
 lto = "thin"

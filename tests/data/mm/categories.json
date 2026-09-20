@@ -1,0 +1,41 @@
+{
+  "categories": [
+    {
+      "id": "cat-favorites",
+      "user_id": "user-me",
+      "team_id": "team-acme",
+      "sort_order": 0,
+      "sorting": "manual",
+      "type": "favorites",
+      "display_name": "Favorites",
+      "muted": false,
+      "collapsed": false,
+      "channel_ids": ["ch-offtopic"]
+    },
+    {
+      "id": "cat-channels",
+      "user_id": "user-me",
+      "team_id": "team-acme",
+      "sort_order": 1,
+      "sorting": "manual",
+      "type": "channels",
+      "display_name": "Channels",
+      "muted": false,
+      "collapsed": false,
+      "channel_ids": ["ch-town", "ch-secret"]
+    },
+    {
+      "id": "cat-dms",
+      "user_id": "user-me",
+      "team_id": "team-acme",
+      "sort_order": 2,
+      "sorting": "recent",
+      "type": "direct_messages",
+      "display_name": "Direct Messages",
+      "muted": false,
+      "collapsed": false,
+      "channel_ids": ["ch-dm-bob"]
+    }
+  ],
+  "order": ["cat-favorites", "cat-channels", "cat-dms"]
+}

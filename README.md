@@ -14,11 +14,12 @@ apps, it will move to a dedicated repo.
 
 ## Status
 
-Scaffold only: the binary prints the version. Window, Mattermost, and Teams are
-not implemented yet.
+Mattermost demo against recorded REST fixtures: left room list, Favorites,
+avatars, emoji shortcodes, and a cache-first message page.
 
 ```sh
-cargo run --locked
+cargo run --locked -- --demo
+cargo run --locked -- --demo --snapshot /tmp/comport.png
 ```
 
 ## Build

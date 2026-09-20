@@ -1,0 +1,20 @@
+{
+  "order": ["post-off-1"],
+  "posts": {
+    "post-off-1": {
+      "id": "post-off-1",
+      "create_at": 1700000002000,
+      "update_at": 1700000002000,
+      "edit_at": 0,
+      "delete_at": 0,
+      "user_id": "user-bob",
+      "channel_id": "ch-offtopic",
+      "root_id": "",
+      "original_id": "",
+      "message": "Weekend plans :thumbsup:",
+      "type": "",
+      "hashtags": "",
+      "pending_post_id": ""
+    }
+  }
+}

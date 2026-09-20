@@ -1,0 +1,14 @@
+[
+  {
+    "id": "team-acme",
+    "create_at": 1700000000000,
+    "update_at": 1700000000000,
+    "delete_at": 0,
+    "display_name": "Acme",
+    "name": "acme",
+    "description": "Acme Corp",
+    "type": "O",
+    "company_name": "",
+    "allow_open_invite": true
+  }
+]

@@ -3,6 +3,7 @@ use std::process::Command;
 #[test]
 fn prints_version() {
     let output = Command::new(env!("CARGO_BIN_EXE_comport"))
+        .arg("--version")
         .output()
         .expect("run comport");
     assert!(output.status.success());
