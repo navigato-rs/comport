@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <!-- Mattermost Denim / Marigold; keep this file simple (no bitmap). -->
+  <rect x="8" y="8" width="240" height="240" rx="24" fill="#1E325C" stroke="#162545" stroke-width="8"/>
+  <path fill="#FFFFFF" d="M56 72h104c13 0 24 11 24 24v48c0 13-11 24-24 24H96l-28 22v-22H56c-13 0-24-11-24-24V96c0-13 11-24 24-24z"/>
+  <path fill="#FFBC1F" d="M108 120h84c11 0 20 9 20 20v36c0 11-9 20-20 20h-8v16l-22-16h-54c-11 0-20-9-20-20v-36c0-11 9-20 20-20z"/>
+</svg>

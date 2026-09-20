@@ -1,0 +1,73 @@
+# Supply-chain policy. Checked in CI on every change and on a weekly schedule.
+
+[graph]
+targets = [
+    "x86_64-unknown-linux-gnu",
+    "aarch64-unknown-linux-gnu",
+    "x86_64-apple-darwin",
+    "aarch64-apple-darwin",
+    "x86_64-pc-windows-msvc",
+]
+all-features = true
+
+[advisories]
+version = 2
+yanked = "deny"
+# Every ignore is an accepted risk with a stated reason and an exit route.
+ignore = []
+
+[bans]
+multiple-versions = "allow"
+wildcards = "deny"
+deny = [
+    { name = "openssl" },
+    { name = "openssl-sys" },
+    { name = "openssl-src" },
+    { name = "native-tls" },
+    { name = "ssh2" },
+    { name = "libssh2-sys" },
+    { name = "ring" },
+    { name = "graviola" },
+    { name = "rustls-graviola" },
+    { name = "aws-lc-rs" },
+    { name = "aws-lc-sys" },
+    { name = "aws-lc-fips-sys" },
+    { name = "mbedtls" },
+    { name = "mbedtls-sys-auto" },
+    { name = "boring" },
+    { name = "boring-sys" },
+    { name = "wolfssl" },
+    { name = "wolfssl-sys" },
+    { name = "schannel", wrappers = ["rustls-native-certs"] },
+    { name = "security-framework", wrappers = ["rustls-native-certs"] },
+]
+
+[licenses]
+version = 2
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "Unicode-3.0",
+    "CC0-1.0",
+    "BSL-1.0",
+    "OFL-1.1",
+    "0BSD",
+    "Ubuntu-font-1.0",
+]
+confidence-threshold = 0.9
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+# Blade (GUI) and rustls-rustcrypto (TLS) will be pinned by revision when those
+# modules land. Listed now so adding them is a Cargo.toml change, not a policy change.
+allow-git = [
+    "https://github.com/kvark/blade",
+    "https://github.com/RustCrypto/rustls-rustcrypto",
+]

@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=ComPort
+Comment=Native Mattermost and Microsoft Teams client
+Exec=comport
+Icon=comport
+Categories=Network;InstantMessaging;
+Keywords=chat;mattermost;teams;im;
+Terminal=false
+StartupWMClass=comport

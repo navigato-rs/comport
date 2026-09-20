@@ -1,0 +1,43 @@
+[package]
+name = "comport"
+version = "0.1.0"
+description = "Native Mattermost and Microsoft Teams client"
+keywords = ["chat", "mattermost", "teams", "egui", "blade"]
+categories = ["gui"]
+license = "MIT"
+repository = "https://github.com/navigato-rs/comport"
+authors = ["Dzmitry Malyshau"]
+edition = "2024"
+# Starcom is 1.96; FileMan is 1.95. Stay on FileMan's MSRV until a dependency forces a bump.
+rust-version = "1.95"
+default-run = "comport"
+
+[package.metadata.bundle]
+name = "ComPort"
+identifier = "com.comport.app"
+icon = ["etc/comport.svg"]
+
+[package.metadata.deb]
+maintainer = "Dzmitry Malyshau"
+section = "net"
+assets = [
+    ["target/release/comport", "usr/bin/comport", "755"],
+    ["etc/comport.desktop", "usr/share/applications/comport.desktop", "644"],
+    ["etc/comport.svg", "usr/share/icons/hicolor/scalable/apps/comport.svg", "644"],
+]
+
+[package.metadata.generate-rpm]
+assets = [
+    { source = "target/release/comport", dest = "/usr/bin/comport", mode = "755" },
+    { source = "etc/comport.desktop", dest = "/usr/share/applications/comport.desktop", mode = "644" },
+    { source = "etc/comport.svg", dest = "/usr/share/icons/hicolor/scalable/apps/comport.svg", mode = "644" },
+]
+
+[dependencies]
+anyhow = "1.0"
+log = "0.4"
+env_logger = "0.11"
+
+[profile.release]
+lto = "thin"
+strip = true
