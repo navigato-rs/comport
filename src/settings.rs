@@ -43,17 +43,21 @@ fn config_dir() -> PathBuf {
     }
     #[cfg(target_os = "macos")]
     {
-        return home_dir()
+        home_dir()
             .join("Library/Application Support")
-            .join("comport");
+            .join("comport")
     }
     #[cfg(target_os = "windows")]
     {
-        if let Some(appdata) = std::env::var_os("APPDATA") {
-            return PathBuf::from(appdata).join("comport");
-        }
+        std::env::var_os("APPDATA")
+            .map(PathBuf::from)
+            .unwrap_or_else(home_dir)
+            .join("comport")
     }
-    home_dir().join(".config/comport")
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        home_dir().join(".config/comport")
+    }
 }
 
 fn state_dir() -> PathBuf {
@@ -62,17 +66,21 @@ fn state_dir() -> PathBuf {
     }
     #[cfg(target_os = "macos")]
     {
-        return home_dir()
+        home_dir()
             .join("Library/Application Support")
-            .join("navigato/comport");
+            .join("navigato/comport")
     }
     #[cfg(target_os = "windows")]
     {
-        if let Some(local) = std::env::var_os("LOCALAPPDATA") {
-            return PathBuf::from(local).join("navigato/comport");
-        }
+        std::env::var_os("LOCALAPPDATA")
+            .map(PathBuf::from)
+            .unwrap_or_else(home_dir)
+            .join("navigato/comport")
     }
-    home_dir().join(".local/state/navigato/comport")
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        home_dir().join(".local/state/navigato/comport")
+    }
 }
 
 fn home_dir() -> PathBuf {
