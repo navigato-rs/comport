@@ -1,10 +1,12 @@
 [Desktop Entry]
 Type=Application
 Name=ComPort
-Comment=Native Mattermost and Microsoft Teams client
-Exec=comport
+Comment=Native Mattermost client
+Exec=comport %u
 Icon=comport
 Categories=Network;InstantMessaging;
-Keywords=chat;mattermost;teams;im;
+Keywords=chat;mattermost;im;sso;
+MimeType=x-scheme-handler/comport;x-scheme-handler/mattermost;
 Terminal=false
+StartupNotify=true
 StartupWMClass=comport

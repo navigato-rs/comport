@@ -7,6 +7,7 @@ pub mod cache;
 pub mod core;
 pub mod emoji;
 pub mod fixtures;
+pub mod handoff;
 pub mod https;
 pub mod mattermost;
 pub mod net;
@@ -16,6 +17,7 @@ pub mod settings;
 pub mod snapshot;
 pub mod ui;
 pub mod window;
+mod ws;
 
 #[cfg(test)]
 mod tests {

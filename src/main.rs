@@ -13,6 +13,7 @@ Usage: comport [--server URL]\n\
 \n\
 With no flags, opens a login form for your Mattermost Site URL.\n\
 --server prefills that URL (https://chat.company.com).\n\
+A mattermost:// or comport:// link completes browser single sign-on.\n\
 --demo loads recorded fixtures (no live server).\n\
 --snapshot writes an offscreen PNG of the demo and requires --demo.\n\
 --exit-after-frames N paints N frames then exits (GPU lifecycle tests).\n";
@@ -33,6 +34,7 @@ fn run() -> anyhow::Result<()> {
     let mut snapshot = None;
     let mut server = None;
     let mut exit_after_frames = None;
+    let mut handoff = None;
     while let Some(argument) = arguments.next() {
         match argument.to_str() {
             Some("--help" | "-h") => {
@@ -79,8 +81,15 @@ fn run() -> anyhow::Result<()> {
                 anyhow::ensure!(n > 0, "--exit-after-frames must be at least 1");
                 exit_after_frames = Some(n);
             }
+            Some(value) if is_handoff(value) => {
+                anyhow::ensure!(handoff.is_none(), "only one sign-in link");
+                handoff = Some(value.to_string());
+            }
             _ => anyhow::bail!("unrecognized argument {argument:?}; use --help"),
         }
+    }
+    if let Some(url) = &handoff && comport::handoff::try_forward(url) {
+        return Ok(());
     }
     anyhow::ensure!(
         server.is_none() || !demo,
@@ -95,5 +104,14 @@ fn run() -> anyhow::Result<()> {
         demo,
         site: server,
         exit_after_frames,
+        handoff,
     })
+}
+
+fn is_handoff(value: &str) -> bool {
+    let lower = value.to_ascii_lowercase();
+    lower.starts_with("mattermost://")
+        || lower.starts_with("mattermost-dev://")
+        || lower.starts_with("comport://")
+        || (lower.starts_with("https://") && lower.contains("server_token="))
 }

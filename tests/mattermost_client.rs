@@ -160,6 +160,118 @@ fn normalize_site_requires_https() {
 }
 
 #[test]
+fn password_rejection_points_at_browser_sso() {
+    use comport::net::{Replay, json_response};
+
+    let mut replay = Replay::new();
+    replay.insert(
+        "POST",
+        "/api/v4/users/login",
+        json_response(
+            401,
+            r#"{"id":"api.user.check_user_password.invalid.app_error","message":"no"}"#,
+        ),
+    );
+    replay.insert(
+        "GET",
+        "/api/v4/config/client",
+        json_response(
+            200,
+            r#"{"EnableSignInWithEmail":"false","EnableSaml":"true","EnableSignUpWithOffice365":"true"}"#,
+        ),
+    );
+    let error = mattermost::login(&replay, "https://mm.example.test", "ada", "nope", None)
+        .expect_err("password must fail");
+    let message = format!("{error:#}");
+    assert!(
+        message.contains("single sign-on"),
+        "SSO servers should not send the user hunting for a token: {message}"
+    );
+    assert!(message.contains("SAML"), "{message}");
+    assert!(message.contains("Entra ID"), "{message}");
+}
+
+#[test]
+fn desktop_token_login_is_one_post() {
+    use comport::net::{Replay, json_response};
+
+    let mut replay = Replay::new();
+    let mut login = json_response(200, include_str!("data/mm/login.json"));
+    login.headers.push(("Token".into(), "from-desktop".into()));
+    replay.insert("POST", "/api/v4/users/login/desktop_token", login);
+    let account = mattermost::login_with_desktop_token(
+        &replay,
+        "https://mm.example.test",
+        "servertokenvalue123456",
+    )
+    .expect("desktop token");
+    assert_eq!(account.token, "from-desktop");
+    assert_eq!(account.me.username, "ada");
+    assert_eq!(replay.call_count(), 1, "do not poll the desktop token");
+}
+
+#[test]
+fn websocket_frames_cover_auth_and_posts() {
+    assert!(matches!(
+        mattermost::parse_ws_message(r#"{"status":"OK","seq_reply":1}"#),
+        Some(mattermost::Incoming::AuthOk)
+    ));
+    assert!(matches!(
+        mattermost::parse_ws_message(r#"{"status":"FAIL","seq_reply":1}"#),
+        Some(mattermost::Incoming::AuthFail)
+    ));
+    let text = r#"{"event":"posted","data":{"sender_name":"Ada","post":"{\"id\":\"p1\",\"message\":\"Hi :smile:\",\"channel_id\":\"c1\",\"user_id\":\"u1\",\"create_at\":5,\"pending_post_id\":\"local-1\"}"},"seq":2}"#;
+    match mattermost::parse_ws_message(text).expect("posted") {
+        mattermost::Incoming::Posted(post) => {
+            assert_eq!(post.id, "p1");
+            assert_eq!(post.channel_id, "c1");
+            assert_eq!(post.message, "Hi :smile:");
+            assert_eq!(post.pending_post_id, "local-1");
+            assert_eq!(post.sender_name, "Ada");
+        }
+        other => panic!("unexpected {other:?}"),
+    }
+    assert!(mattermost::parse_ws_message(r#"{"event":"typing","data":{}}"#).is_none());
+    assert_eq!(
+        mattermost::websocket_url("https://chat.company.com/team", ""),
+        "wss://chat.company.com/team/api/v4/websocket"
+    );
+    assert_eq!(
+        mattermost::websocket_url("https://chat.company.com", "wss://chat.company.com"),
+        "wss://chat.company.com/api/v4/websocket"
+    );
+}
+
+#[test]
+fn create_post_uses_the_server_post() {
+    use comport::net::{Replay, json_response};
+
+    let mut replay = Replay::new();
+    replay.insert(
+        "POST",
+        "/api/v4/posts",
+        json_response(
+            201,
+            r#"{"id":"p9","message":"Hi :wave:","channel_id":"c","user_id":"user-me","create_at":9}"#,
+        ),
+    );
+    let mut users = Vec::new();
+    let message = mattermost::create_post(
+        &replay,
+        "https://mm.example.test",
+        "token",
+        &mut users,
+        "c",
+        "Hi :wave:",
+        "local-abc",
+    )
+    .expect("create");
+    assert_eq!(message.id, "p9");
+    assert_eq!(message.body_source, "Hi :wave:");
+    assert_eq!(message.body, expand_shortcodes("Hi :wave:"));
+}
+
+#[test]
 fn personal_access_token_skips_password_login() {
     let replay = Arc::new(recorded_replay());
     let mut account = mattermost::login_with_token(

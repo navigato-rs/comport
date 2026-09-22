@@ -1,6 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
-  <!-- Mattermost Denim / Marigold; keep this file simple (no bitmap). -->
-  <rect x="8" y="8" width="240" height="240" rx="24" fill="#1E325C" stroke="#162545" stroke-width="8"/>
-  <path fill="#FFFFFF" d="M56 72h104c13 0 24 11 24 24v48c0 13-11 24-24 24H96l-28 22v-22H56c-13 0-24-11-24-24V96c0-13 11-24 24-24z"/>
-  <path fill="#FFBC1F" d="M108 120h84c11 0 20 9 20 20v36c0 11-9 20-20 20h-8v16l-22-16h-54c-11 0-20-9-20-20v-36c0-11 9-20 20-20z"/>
+  <rect width="256" height="256" rx="56" fill="#3A5E89"/>
+  <path fill="#1B3A5F" d="M48 78h92c14 0 26 12 26 26v40c0 14-12 26-26 26H78l-22 20v-20H48c-14 0-26-12-26-26v-40c0-14 12-26 26-26z"/>
+  <path fill="#FFFFFF" d="M54 84h86c12 0 22 10 22 22v36c0 12-10 22-22 22H82l-18 16v-16H54c-12 0-22-10-22-22v-36c0-12 10-22 22-22z"/>
+  <path fill="#1B3A5F" d="M108 118h96c12 0 22 10 22 22v34c0 12-10 22-22 22h-8l2 18-24-18H108c-12 0-22-10-22-22v-34c0-12 10-22 22-22z"/>
+  <path fill="#F0B429" d="M114 124h90c10 0 18 8 18 18v30c0 10-8 18-18 18h-10l2 14-20-14H114c-10 0-18-8-18-18v-30c0-10 8-18 18-18z"/>
 </svg>

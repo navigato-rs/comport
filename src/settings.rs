@@ -33,6 +33,15 @@ pub fn cache_path() -> PathBuf {
     state_dir().join("cache.sqlite")
 }
 
+/// Per-user runtime dir for the sign-in socket. `XDG_RUNTIME_DIR` is private
+/// to the login session; the state dir is the fallback.
+pub fn runtime_dir() -> PathBuf {
+    if let Some(xdg) = std::env::var_os("XDG_RUNTIME_DIR") {
+        return PathBuf::from(xdg).join("comport");
+    }
+    state_dir()
+}
+
 fn config_path() -> PathBuf {
     config_dir().join("settings.json")
 }

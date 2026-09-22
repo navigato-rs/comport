@@ -50,6 +50,10 @@ impl Https {
 }
 
 impl Transport for Https {
+    fn live(&self) -> bool {
+        true
+    }
+
     fn send(&self, req: &Request) -> Result<Response> {
         validate_https(&req.url)?;
         if req.body.len() > 1024 * 1024 {
@@ -58,6 +62,13 @@ impl Transport for Https {
         let mut response = match req.method {
             Method::Get => {
                 let mut builder = self.agent.get(&req.url);
+                for (name, value) in &req.headers {
+                    builder = builder.header(name, value);
+                }
+                builder.call().map_err(|error| anyhow!("{error}"))?
+            }
+            Method::Delete => {
+                let mut builder = self.agent.delete(&req.url);
                 for (name, value) in &req.headers {
                     builder = builder.header(name, value);
                 }

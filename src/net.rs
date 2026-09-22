@@ -10,6 +10,7 @@ pub enum Method {
     Get,
     Post,
     Put,
+    Delete,
 }
 
 impl Method {
@@ -18,6 +19,7 @@ impl Method {
             Self::Get => "GET",
             Self::Post => "POST",
             Self::Put => "PUT",
+            Self::Delete => "DELETE",
         }
     }
 }
@@ -52,6 +54,12 @@ impl Response {
 
 pub trait Transport: Send + Sync {
     fn send(&self, req: &Request) -> Result<Response>;
+
+    /// Live HTTPS, as opposed to fixture replay. The session opens a websocket
+    /// only for a live transport so tests never dial out.
+    fn live(&self) -> bool {
+        false
+    }
 }
 
 /// Replay map keyed by METHOD + path (query stripped). Records every call.

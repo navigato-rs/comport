@@ -88,6 +88,8 @@ impl Cache {
                     display_name: row.get(2)?,
                     kind: kind_from_str(&row.get::<_, String>(3)?),
                     favorite: row.get::<_, i64>(4)? != 0,
+                    mentions: 0,
+                    unread: false,
                 })
             })?
             .collect::<rusqlite::Result<Vec<_>>>()?;
@@ -200,6 +202,40 @@ impl Cache {
             messages.push(message);
         }
         Ok(Some(messages))
+    }
+
+    pub fn upsert_message(&self, message: &Message) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO messages (id, channel_id, user_id, body_source, body, create_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+             ON CONFLICT(id) DO UPDATE SET
+                channel_id = excluded.channel_id,
+                user_id = excluded.user_id,
+                body_source = excluded.body_source,
+                body = excluded.body,
+                create_at = excluded.create_at",
+            params![
+                message.id,
+                message.channel_id,
+                message.user_id,
+                message.body_source,
+                message.body,
+                message.create_at
+            ],
+        )?;
+        if let Some(portrait) = &message.portrait {
+            self.conn.execute(
+                "UPDATE users SET avatar = ?1 WHERE id = ?2",
+                params![portrait.bytes, portrait.user_id],
+            )?;
+        }
+        Ok(())
+    }
+
+    pub fn delete_message(&self, id: &str) -> Result<()> {
+        self.conn
+            .execute("DELETE FROM messages WHERE id = ?1", [id])?;
+        Ok(())
     }
 }
 

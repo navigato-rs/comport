@@ -16,6 +16,19 @@ pub struct Room {
     pub display_name: String,
     pub kind: RoomKind,
     pub favorite: bool,
+    /// Mention count from channel membership. Not a poll; websocket bumps it.
+    pub mentions: u32,
+    /// A post arrived in this room while it was not the open one.
+    pub unread: bool,
+}
+
+/// Realtime link. The UI paints this; nothing animates it on a timer.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Link {
+    Offline,
+    Connecting,
+    Live,
+    Reconnecting,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd)]

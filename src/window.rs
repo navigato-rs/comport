@@ -11,18 +11,22 @@ use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::window::{Window, WindowId};
 
 use crate::cache::Cache;
+use crate::core::Link;
+use crate::handoff::LoginSocket;
 use crate::https::Https;
 use crate::session::{Event, Session};
-use crate::ui::{Desktop, LoginForm};
+use crate::ui::{ChatAction, Desktop, LoginAction, LoginForm};
 
 enum UserEvent {
     Wake,
+    Handoff(String),
 }
 
 pub struct Startup {
     pub demo: bool,
     pub site: Option<String>,
     pub exit_after_frames: Option<u32>,
+    pub handoff: Option<String>,
 }
 
 struct Runtime {
@@ -191,10 +195,15 @@ struct App {
     proxy: winit::event_loop::EventLoopProxy<UserEvent>,
     exit_after_frames: Option<u32>,
     frames_painted: u32,
+    pending_handoff: Option<String>,
+    _login_socket: Option<LoginSocket>,
 }
 
 impl App {
-    fn submit_login(&mut self, form: &LoginForm) -> anyhow::Result<()> {
+    fn ensure_session(&mut self) -> anyhow::Result<()> {
+        if self.session.is_some() {
+            return Ok(());
+        }
         let https = Https::from_system_roots()?;
         if let Some(parent) = crate::settings::cache_path().parent() {
             std::fs::create_dir_all(parent)?;
@@ -208,16 +217,131 @@ impl App {
         let wake = Arc::new(move || {
             let _ = proxy.send_event(UserEvent::Wake);
         });
-        let session = Session::spawn_waking(Arc::new(https), cache, wake);
-        session.login_full(
-            &form.site,
-            &form.login_id,
-            &form.password,
-            &form.totp,
-            &form.pat,
-        )?;
-        self.session = Some(session);
+        self.session = Some(Session::spawn_waking(Arc::new(https), cache, wake));
         Ok(())
+    }
+
+    fn site_hint(&self) -> String {
+        match &self.screen {
+            Screen::Login(form) => form.site.clone(),
+            Screen::Chat(desktop) => desktop.account.site_url.clone(),
+        }
+    }
+
+    fn take_handoff(&mut self) {
+        let Some(raw) = self.pending_handoff.take() else {
+            return;
+        };
+        let site = self.site_hint();
+        if let Err(error) = self.ensure_session() {
+            if let Screen::Login(form) = &mut self.screen {
+                form.busy = false;
+                form.error = Some(format!("{error:#}"));
+            }
+            return;
+        }
+        if let Some(session) = &self.session {
+            let _ = session.complete_handoff(&raw, &site);
+        }
+        if let Screen::Login(form) = &mut self.screen {
+            form.busy = true;
+            form.error = None;
+        }
+    }
+
+    fn apply_login(&mut self, action: LoginAction) {
+        let request = match action {
+            LoginAction::None => return,
+            LoginAction::Browser => {
+                let site = self.site_hint();
+                Some(LoginRequest::Browser(site))
+            }
+            LoginAction::Password => {
+                let Screen::Login(form) = &self.screen else {
+                    return;
+                };
+                Some(LoginRequest::Password {
+                    site: form.site.clone(),
+                    login_id: form.login_id.clone(),
+                    password: form.password.clone(),
+                    totp: form.totp.clone(),
+                    pat: form.pat.clone(),
+                })
+            }
+            LoginAction::Paste => {
+                let Screen::Login(form) = &self.screen else {
+                    return;
+                };
+                Some(LoginRequest::Paste {
+                    raw: form.paste.clone(),
+                    site: form.site.clone(),
+                })
+            }
+        };
+        let Some(request) = request else {
+            return;
+        };
+        if let Err(error) = self.ensure_session() {
+            if let Screen::Login(form) = &mut self.screen {
+                form.busy = false;
+                form.error = Some(format!("{error:#}"));
+            }
+            return;
+        }
+        if let Screen::Login(form) = &mut self.screen {
+            form.busy = true;
+            form.error = None;
+        }
+        let result = self.session.as_ref().map(|session| match request {
+            LoginRequest::Browser(site) => session.browser_login(&site),
+            LoginRequest::Password {
+                site,
+                login_id,
+                password,
+                totp,
+                pat,
+            } => session.login_full(&site, &login_id, &password, &totp, &pat),
+            LoginRequest::Paste { raw, site } => session.complete_handoff(&raw, &site),
+        });
+        if let Some(Err(error)) = result
+            && let Screen::Login(form) = &mut self.screen
+        {
+            form.busy = false;
+            form.error = Some(format!("{error:#}"));
+        }
+    }
+
+    fn apply_chat(&mut self, action: ChatAction) {
+        if self.session.is_none() {
+            return;
+        }
+        if matches!(action, ChatAction::Open(_))
+            && let Screen::Chat(desktop) = &mut self.screen
+        {
+            desktop.editing = None;
+        }
+        let Some(session) = self.session.as_ref() else {
+            return;
+        };
+        match action {
+            ChatAction::None => {}
+            ChatAction::Open(id) => {
+                let _ = session.load_history(&id);
+            }
+            ChatAction::Send {
+                channel_id,
+                text,
+                editing,
+            } => {
+                let _ = session.send_message(&channel_id, &text, editing);
+            }
+            ChatAction::Delete { post_id } => {
+                let _ = session.delete_message(&post_id);
+            }
+            ChatAction::SwitchTeam => {
+                let _ = session.switch_team();
+            }
+        }
     }
 
     fn drain_session(&mut self) {
@@ -246,10 +370,37 @@ impl App {
                         from_cache: true,
                         loaded_on: std::thread::current().id(),
                     };
-                    self.screen = Screen::Chat(Box::new(Desktop::from_demo(account, empty)));
+                    let mut desktop = Desktop::from_demo(account, empty);
+                    desktop.link = Link::Connecting;
+                    self.screen = Screen::Chat(Box::new(desktop));
+                }
+                Ok(Some(Event::Account { account })) => {
+                    if let Screen::Chat(desktop) = &mut self.screen {
+                        desktop.account = account;
+                        desktop.page.messages.clear();
+                        desktop.page.channel_id.clear();
+                        desktop.selected.clear();
+                        desktop.editing = None;
+                        desktop.draft.clear();
+                    }
+                    if let Some(session) = self.session.as_ref()
+                        && let Screen::Chat(desktop) = &self.screen
+                        && let Some(room) = desktop
+                            .account
+                            .sidebar
+                            .grouped()
+                            .into_iter()
+                            .flat_map(|(_, rooms)| rooms)
+                            .next()
+                    {
+                        let id = room.id.clone();
+                        let _ = session.load_history(&id);
+                    }
                 }
                 Ok(Some(Event::Messages { page })) => {
-                    if let Screen::Chat(desktop) = &mut self.screen {
+                    if let Screen::Chat(desktop) = &mut self.screen
+                        && (desktop.selected.is_empty() || desktop.selected == page.channel_id)
+                    {
                         desktop.selected = page.channel_id.clone();
                         desktop.page = page;
                     }
@@ -257,23 +408,80 @@ impl App {
                         form.busy = false;
                     }
                 }
+                Ok(Some(Event::Upsert { message })) => {
+                    if let Screen::Chat(desktop) = &mut self.screen
+                        && message.channel_id == desktop.selected
+                    {
+                        if let Some(existing) = desktop
+                            .page
+                            .messages
+                            .iter_mut()
+                            .find(|item| item.id == message.id)
+                        {
+                            *existing = message;
+                        } else {
+                            desktop.page.messages.push(message);
+                            desktop.page.messages.sort_by_key(|item| item.create_at);
+                        }
+                        desktop.updated = true;
+                    }
+                }
+                Ok(Some(Event::Removed {
+                    channel_id,
+                    post_id,
+                })) => {
+                    if let Screen::Chat(desktop) = &mut self.screen
+                        && desktop.selected == channel_id
+                    {
+                        desktop.page.messages.retain(|item| item.id != post_id);
+                        desktop.updated = true;
+                    }
+                }
+                Ok(Some(Event::Link { state, updated })) => {
+                    if let Screen::Chat(desktop) = &mut self.screen {
+                        desktop.link = state;
+                        if state != Link::Live {
+                            desktop.updated = false;
+                        } else if updated {
+                            desktop.updated = true;
+                        }
+                    }
+                }
+                Ok(Some(Event::WaitingBrowser { providers })) => {
+                    if let Screen::Login(form) = &mut self.screen {
+                        form.busy = false;
+                        form.waiting_browser = true;
+                        form.providers = providers;
+                        form.error = None;
+                    }
+                }
+                Ok(Some(Event::AuthExpired)) => {
+                    let site = self.site_hint();
+                    let mut form = LoginForm::new(site);
+                    form.error = Some("Session expired. Sign in with the browser again.".into());
+                    self.screen = Screen::Login(form);
+                }
                 Ok(Some(Event::Sidebar { sidebar })) => {
                     if let Screen::Chat(desktop) = &mut self.screen {
                         desktop.account.sidebar = sidebar;
                     }
                 }
-                Ok(Some(Event::Error { message })) => {
-                    if message.contains("mfa_required") {
+                Ok(Some(Event::Error { message, login })) => {
+                    if login && message.contains("mfa_required") {
                         if let Screen::Login(form) = &mut self.screen {
                             form.need_mfa = true;
                             form.busy = false;
+                            form.waiting_browser = false;
                             form.error = Some("Enter the MFA code from your authenticator.".into());
                         }
-                    } else if let Screen::Login(form) = &mut self.screen {
-                        form.busy = false;
-                        form.error = Some(message);
+                    } else if login {
+                        if let Screen::Login(form) = &mut self.screen {
+                            form.busy = false;
+                            form.error = Some(message);
+                        }
+                    } else if let Screen::Chat(desktop) = &mut self.screen {
+                        desktop.notice = Some(message);
                     }
-                    self.session = None;
                     break;
                 }
                 Ok(None) => break,
@@ -327,47 +535,25 @@ impl ApplicationHandler<UserEvent> for App {
             }
             WindowEvent::RedrawRequested => {
                 self.drain_session();
+                self.take_handoff();
                 let raw = {
                     let runtime = self.runtime.as_mut().unwrap();
                     runtime.input.take_egui_input(&runtime.window)
                 };
-                let mut login_submit = false;
-                let mut room_click = None;
+                let mut login_action = LoginAction::None;
+                let mut chat_action = ChatAction::None;
                 let output = {
                     self.ctx.run_ui(raw, |ui| match &mut self.screen {
                         Screen::Login(form) => {
-                            login_submit = form.show(ui);
+                            login_action = form.show(ui);
                         }
                         Screen::Chat(desktop) => {
-                            room_click = desktop.show(ui);
+                            chat_action = desktop.show(ui);
                         }
                     })
                 };
-                if login_submit && let Screen::Login(form) = &mut self.screen {
-                    form.busy = true;
-                    form.error = None;
-                    let snapshot = LoginForm {
-                        site: form.site.clone(),
-                        login_id: form.login_id.clone(),
-                        password: form.password.clone(),
-                        totp: form.totp.clone(),
-                        pat: form.pat.clone(),
-                        error: None,
-                        busy: true,
-                        need_mfa: form.need_mfa,
-                    };
-                    if let Err(error) = self.submit_login(&snapshot)
-                        && let Screen::Login(form) = &mut self.screen
-                    {
-                        form.busy = false;
-                        form.error = Some(format!("{error:#}"));
-                    }
-                }
-                if let Some(id) = room_click
-                    && let Some(session) = &self.session
-                {
-                    let _ = session.load_history(&id);
-                }
+                self.apply_login(login_action);
+                self.apply_chat(chat_action);
                 if let Err(error) = self.runtime.as_mut().unwrap().paint(&self.ctx, output) {
                     self.error = Some(error);
                     self.shutdown();
@@ -396,11 +582,29 @@ impl ApplicationHandler<UserEvent> for App {
         self.shutdown();
     }
 
-    fn user_event(&mut self, _event_loop: &ActiveEventLoop, _event: UserEvent) {
+    fn user_event(&mut self, _event_loop: &ActiveEventLoop, event: UserEvent) {
+        if let UserEvent::Handoff(url) = event {
+            self.pending_handoff = Some(url);
+        }
         if let Some(runtime) = &self.runtime {
             runtime.window.request_redraw();
         }
     }
+}
+
+enum LoginRequest {
+    Browser(String),
+    Password {
+        site: String,
+        login_id: String,
+        password: String,
+        totp: String,
+        pat: String,
+    },
+    Paste {
+        raw: String,
+        site: String,
+    },
 }
 
 pub fn run(startup: Startup) -> anyhow::Result<()> {
@@ -411,6 +615,11 @@ pub fn run(startup: Startup) -> anyhow::Result<()> {
     let site = startup.site.unwrap_or(saved.site_url);
     let event_loop = EventLoop::<UserEvent>::with_user_event().build()?;
     let proxy = event_loop.create_proxy();
+    let listen_proxy = event_loop.create_proxy();
+    let login_socket = LoginSocket::spawn(move |url| {
+        let _ = listen_proxy.send_event(UserEvent::Handoff(url));
+    })
+    .ok();
     let ctx = egui::Context::default();
     let mut app = App {
         ctx,
@@ -421,6 +630,8 @@ pub fn run(startup: Startup) -> anyhow::Result<()> {
         proxy,
         exit_after_frames: startup.exit_after_frames,
         frames_painted: 0,
+        pending_handoff: startup.handoff,
+        _login_socket: login_socket,
     };
     let result = event_loop.run_app(&mut app);
     app.shutdown();
@@ -449,6 +660,8 @@ fn run_demo_inner(exit_after_frames: Option<u32>) -> anyhow::Result<()> {
         proxy,
         exit_after_frames,
         frames_painted: 0,
+        pending_handoff: None,
+        _login_socket: None,
     };
     let result = event_loop.run_app(&mut app);
     app.shutdown();
